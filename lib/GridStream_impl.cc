@@ -189,6 +189,8 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
     uint32_t receivedMeterLanSrcID{ 0xFFFFFFFF };
     uint32_t receivedMeterLanDstID{ 0xFFFFFFFF };
     int upTime{ 0 };
+    int unixTimestamp{ 0 };
+    int powerReading{ 0 };
 	std::string GridStreamMeterSrcID{ "" };
 	std::string GridStreamMeterSrcWanID{ "" };
 	std::string GridStreamMeterDstID{ "" };
@@ -215,6 +217,15 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
                                     char_to_hex(int(data[13]))+char_to_hex(int(data[14])));
             GridStreamMeterDstID = (char_to_hex(int(data[7]))+char_to_hex(int(data[8]))+
                                     char_to_hex(int(data[9]))+char_to_hex(int(data[10])));
+            // Status packets (length 0x0047) carry three additional 32-bit big-endian fields:
+            //   bytes 16-19: Unix timestamp (seconds since epoch, 1 Hz)
+            //   bytes 20-23: power reading (suspected scale: Watts x 100, fluctuates with load)
+            //   bytes 24-27: uptime since last power-on (1 Hz, same semantics as 0x55 broadcast)
+            if (packet_len == 0x0047) {
+                unixTimestamp = data[19] | data[18] << 8 | data[17] << 16 | data[16] << 24;
+                powerReading  = data[23] | data[22] << 8 | data[21] << 16 | data[20] << 24;
+                upTime        = data[27] | data[26] << 8 | data[25] << 16 | data[24] << 24;
+            }
         }
     }
     double center_frequency = 0;
@@ -273,6 +284,8 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
             meta = pmt::dict_add(meta, pmt::mp("Gridstream_WanSrcID"), pmt::mp(GridStreamMeterSrcWanID));
             meta = pmt::dict_add(meta, pmt::mp("Gridstream_LanDstID"), pmt::mp(GridStreamMeterDstID));
             meta = pmt::dict_add(meta, pmt::mp("Gridstream_Uptime"), pmt::mp(upTime));
+            meta = pmt::dict_add(meta, pmt::mp("Gridstream_UnixTime"), pmt::mp(unixTimestamp));
+            meta = pmt::dict_add(meta, pmt::mp("Gridstream_PowerReading"), pmt::mp(powerReading));
             meta = pmt::dict_add(meta, pmt::mp("Gridstream_Freq"), pmt::mp(double(floor(center_frequency/100000)/10)));
 
             message_port_pub(PMTCONSTSTR__PDU_OUT,(pmt::cons(meta, pmt::init_u8vector(data.size(), data))));
