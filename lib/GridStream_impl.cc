@@ -194,6 +194,7 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
     int upTime{ 0 };
     int unixTimestamp{ 0 };
     int powerReading{ 0 };
+    int voltageDeciVolts{ 0 };  // bytes 73-74 of 0x0047, BCD-encoded service voltage * 10
 	std::string GridStreamMeterSrcID{ "" };
 	std::string GridStreamMeterSrcWanID{ "" };
 	std::string GridStreamMeterDstID{ "" };
@@ -224,10 +225,20 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
             //   bytes 16-19: Unix timestamp (seconds since epoch, 1 Hz)
             //   bytes 20-23: power reading (suspected scale: Watts x 100, fluctuates with load)
             //   bytes 24-27: uptime since last power-on (1 Hz, same semantics as 0x55 broadcast)
+            // Plus a BCD-encoded service voltage at bytes 73-74:
+            //   each nibble is a decimal digit; combined 4 digits = voltage * 10
+            //   e.g., 0x11 0x90 = "1190" = 119.0 V (typical US residential)
             if (packet_len == 0x0047) {
                 unixTimestamp = data[19] | data[18] << 8 | data[17] << 16 | data[16] << 24;
                 powerReading  = data[23] | data[22] << 8 | data[21] << 16 | data[20] << 24;
                 upTime        = data[27] | data[26] << 8 | data[25] << 16 | data[24] << 24;
+                // Validate that bytes 73-74 are valid BCD before decoding
+                uint8_t b73 = data[73], b74 = data[74];
+                if ((b73 >> 4) <= 9 && (b73 & 0xF) <= 9 &&
+                    (b74 >> 4) <= 9 && (b74 & 0xF) <= 9) {
+                    voltageDeciVolts = (b73 >> 4) * 1000 + (b73 & 0xF) * 100
+                                     + (b74 >> 4) * 10  + (b74 & 0xF);
+                }
             }
         }
     }
@@ -303,6 +314,7 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
             meta = pmt::dict_add(meta, pmt::mp("Gridstream_Uptime"), pmt::mp(upTime));
             meta = pmt::dict_add(meta, pmt::mp("Gridstream_UnixTime"), pmt::mp(unixTimestamp));
             meta = pmt::dict_add(meta, pmt::mp("Gridstream_PowerReading"), pmt::mp(powerReading));
+            meta = pmt::dict_add(meta, pmt::mp("Gridstream_VoltageDeciVolts"), pmt::mp(voltageDeciVolts));
             meta = pmt::dict_add(meta, pmt::mp("Gridstream_Freq"), pmt::mp(double(floor(center_frequency/100000)/10)));
 
             message_port_pub(PMTCONSTSTR__PDU_OUT,(pmt::cons(meta, pmt::init_u8vector(data.size(), data))));
