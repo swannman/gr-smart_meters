@@ -152,7 +152,10 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
 	int header_len = { 0 };
     int packet_type = data[3];
     int packet_len = { 0 };
-    if (packet_type == 0xD2) {
+    if ((packet_type == 0xD2) || (packet_type == 0xA5)) {
+        // Both 0xD2 and 0xA5 use a 1-byte length field at offset 4 (no leading 0x00).
+        // 0xA5 packets appear on PSE and other deployments; without this branch they
+        // fall through to the generic else, get the wrong packet_len, and CRC fails.
         header_len = 5;
         packet_len = data[4];
     } else if ((packet_type == 0x55) || (packet_type == 0xD5)) {
