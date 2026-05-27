@@ -236,6 +236,15 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
     if (pmt::dict_has_key(meta, pmt::intern("symbol_rate"))) {
         symbol_rate = pmt::to_double(pmt::dict_ref(meta, pmt::intern("symbol_rate"), pmt::PMT_NIL));
     }
+    // gr-fhss_utils attaches snr_db / pwr_db / noise_density to each burst's PMT metadata
+    double snr_db = 0;
+    if (pmt::dict_has_key(meta, pmt::intern("snr_db"))) {
+        snr_db = pmt::to_double(pmt::dict_ref(meta, pmt::intern("snr_db"), pmt::PMT_NIL));
+    }
+    double pwr_db = 0;
+    if (pmt::dict_has_key(meta, pmt::intern("pwr_db"))) {
+        pwr_db = pmt::to_double(pmt::dict_ref(meta, pmt::intern("pwr_db"), pmt::PMT_NIL));
+    }
     std::time_t captured_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     if (pmt::dict_has_key(meta, pmt::intern("system_time"))) {
         captured_time = pmt::to_double(pmt::dict_ref(meta, pmt::intern("system_time"), pmt::PMT_NIL));
@@ -271,6 +280,11 @@ void GridStream_impl::pdu_handler(pmt::pmt_t pdu)
                 if (d_frequencyEnable) {
                     std::cout << "\tFreq: " << std::dec << std::fixed << std::setprecision(1) << floor(center_frequency/100000)/10;
                 }
+                // Always emit per-burst SNR / power (from upstream fhss_utils metadata).
+                // Useful for distinguishing direct vs relayed transmissions when both produce
+                // a status packet attributed to the same source meter.
+                std::cout << "\tSNR: " << std::dec << std::fixed << std::setprecision(1) << snr_db;
+                std::cout << "\tPwr: " << std::dec << std::fixed << std::setprecision(1) << pwr_db;
                 if (d_epochEnable) {
                     std::cout << "\t" << time_in_HH_MM_SS_MMM();
                 }
